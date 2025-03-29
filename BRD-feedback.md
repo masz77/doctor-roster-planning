@@ -63,7 +63,7 @@ The application will:
 **Description**: The system must accurately identify and manage public holidays to assign appropriate on-call units and ensure fairness.
 
 **Requirements**:
-- Integrate with a data source (e.g., an API) to retrieve Australian public holiday dates, or allow manual entry of holiday dates by admins. I can manually enter public holiday data if it will reduce the scope of the project but this might mean another interface for me to input public holidays?
+- Import Australian public holiday dates manually into XANO database using data provided by Stephen.
 - Track each doctor's historical public holiday on-call assignments to inform future roster generation for equitable distribution.
 
 ### 2.4. Notification System
