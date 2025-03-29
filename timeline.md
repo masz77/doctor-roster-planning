@@ -1,4 +1,7 @@
 ## Implementation Timeline Breakdown (23 hours total)
+Original Price: $690
+Special Price: $500
+You Save: $190 (28% discount) 
 
 ### Phase 1: Project Setup and Core Data Models (4 hours)
 **Backend (2 hours)**
