@@ -1,0 +1,179 @@
+// Roster Application ERD
+// -----------------
+
+// Users table - contains both admin and doctor users
+Table users {
+  id integer [pk, increment]
+  email varchar [not null, unique]
+  additional_email varchar
+  name varchar [not null]
+  role enum('admin', 'doctor') [not null, default: 'doctor']
+  weekly_hours integer [not null] // Working hours per week (e.g., 10, 20, 40)
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+  is_active boolean [not null, default: true]
+}
+
+// Roster periods
+Table roster_periods {
+  id integer [pk, increment]
+  name varchar [not null] // e.g., "Q1 2023"
+  start_date date [not null]
+  end_date date [not null]
+  status enum('draft', 'published', 'active', 'archived') [not null, default: 'draft']
+  created_at timestamp [default: `now()`]
+  created_by integer [ref: > users.id]
+  published_at timestamp
+  published_by integer [ref: > users.id]
+}
+
+// Public holidays
+Table public_holidays {
+  id integer [pk, increment]
+  name varchar [not null] // e.g., "Christmas Day"
+  date date [not null, unique]
+  description text
+  created_at timestamp [default: `now()`]
+  created_by integer [ref: > users.id]
+}
+
+// On-call shifts 
+Table shifts {
+  id integer [pk, increment]
+  roster_period_id integer [not null, ref: > roster_periods.id]
+  start_date date [not null]
+  end_date date [not null] // For multi-day shifts like weekends
+  shift_pattern enum('mon_tue', 'wed_thu', 'fri_sat_sun', 'special') [not null]
+  units decimal(4,1) [not null] // Total on-call units for this shift
+  is_public_holiday boolean [not null, default: false] // Indicates if any days in the shift are public holidays
+  is_special_period boolean [not null, default: false] // For Easter, Christmas, etc.
+  special_period_name varchar // e.g., "Easter", "Christmas"
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+  
+  indexes {
+    (roster_period_id, start_date) [unique]
+  }
+}
+
+// Doctor shift assignments
+Table shift_assignments {
+  id integer [pk, increment]
+  shift_id integer [not null, ref: > shifts.id]
+  doctor_id integer [not null, ref: > users.id]
+  status enum('pending', 'confirmed', 'unable', 'reassigned') [not null, default: 'pending']
+  response_timestamp timestamp // When the doctor responded
+  is_public_holiday_shift boolean [not null, default: false] // Flag for public holiday shift
+  units_assigned decimal(4,1) [not null] // Units assigned to this doctor for this shift
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+  
+  indexes {
+    (shift_id, doctor_id) [unique]
+  }
+}
+
+// Doctor unavailability periods
+Table unavailability_periods {
+  id integer [pk, increment]
+  doctor_id integer [not null, ref: > users.id]
+  start_date date [not null]
+  end_date date [not null]
+  reason text
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+  
+  indexes {
+    (doctor_id, start_date, end_date)
+  }
+}
+
+// Historical records of public holiday shifts worked
+Table public_holiday_history {
+  id integer [pk, increment]
+  doctor_id integer [not null, ref: > users.id]
+  public_holiday_id integer [ref: > public_holidays.id]
+  shift_assignment_id integer [ref: > shift_assignments.id]
+  date date [not null] // The actual date of the public holiday
+  units decimal(4,1) [not null] // Units assigned for this public holiday
+  year integer [not null] // Year of the public holiday for easier querying
+  created_at timestamp [default: `now()`]
+  
+  indexes {
+    (doctor_id, date) [unique]
+    (doctor_id, year)
+  }
+}
+
+// Notification logs
+Table notifications {
+  id integer [pk, increment]
+  user_id integer [not null, ref: > users.id]
+  notification_type enum('roster_generated', 'unavailability_request', 'shift_reminder_month', 'shift_reminder_week', 'shift_confirmation_request', 'shift_confirmation_response', 'admin_alert') [not null]
+  related_shift_id integer [ref: > shift_assignments.id]
+  related_roster_id integer [ref: > roster_periods.id]
+  status enum('pending', 'sent', 'failed', 'responded') [not null, default: 'pending']
+  sent_at timestamp
+  response_received_at timestamp
+  email_sent_to varchar [not null]
+  message text
+  created_at timestamp [default: `now()`]
+}
+
+// Settings for the application
+Table system_settings {
+  id integer [pk, increment]
+  setting_key varchar [not null, unique]
+  setting_value text [not null]
+  description text
+  updated_at timestamp
+  updated_by integer [ref: > users.id]
+}
+
+// Roster rules - to make rules configurable
+Table roster_rules {
+  id integer [pk, increment]
+  rule_name varchar [not null, unique]
+  rule_type enum('allocation', 'pattern', 'restriction', 'preference') [not null]
+  rule_value text [not null] // JSON format to store complex rule configurations
+  is_active boolean [not null, default: true]
+  description text
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+  updated_by integer [ref: > users.id]
+}
+
+// Imported historical roster data (for initial setup)
+Table historical_roster_data {
+  id integer [pk, increment]
+  doctor_id integer [not null, ref: > users.id]
+  shift_date date [not null]
+  is_public_holiday boolean [not null, default: false]
+  units decimal(4,1) [not null]
+  import_batch_id integer [not null] // To group imports
+  created_at timestamp [default: `now()`]
+  created_by integer [ref: > users.id]
+  
+  indexes {
+    (doctor_id, shift_date)
+    import_batch_id
+  }
+}
+
+// Many-to-many relationship between shifts and public holidays
+Table shift_public_holidays {
+  id integer [pk, increment]
+  shift_id integer [not null, ref: > shifts.id]
+  public_holiday_id integer [not null, ref: > public_holidays.id]
+  
+  indexes {
+    (shift_id, public_holiday_id) [unique]
+  }
+}
+
+// Define relationships using references
+
+Ref: shift_assignments.doctor_id > users.id
+Ref: unavailability_periods.doctor_id > users.id
+Ref: public_holiday_history.doctor_id > users.id
+Ref: shifts.roster_period_id > roster_periods.id 
