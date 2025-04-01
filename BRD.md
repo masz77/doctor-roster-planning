@@ -35,6 +35,13 @@ The application will:
 
 **Requirements**:
 - Generate quarterly rosters 2 months before the quarter is due to begin, quarterly dates are 1 Feb to 30 April, 1 May to 31 July, 1 Aug to 31 Oct and 1 Nov to 31 Jan
+- Provide "Generate Roster" and "Publish" buttons:
+  - Generate creates roster for admin review
+  - Publish notifies doctors and activates reminders
+- Support partially filled rosters:
+  - Allow pre-filled dates/shifts
+  - Generate remaining dates while respecting existing assignments
+  - Support manual assignment of specific shifts (e.g. for holiday volunteers)
 - Assign on-call shifts according to the following patterns:
   - Monday + Tuesday
   - Wednesday + Thursday
@@ -46,6 +53,9 @@ The application will:
 - Handle special periods:
   - Split Easter long weekend (e.g., Good Friday to Easter Monday) into two halves, assigning different doctors to each half, unless a doctor volunteers to cover the entire period.
   - Split Christmas period (e.g., Christmas Eve to Boxing Day) into two halves, assigning different doctors to each half, unless a doctor volunteers to cover the entire period.
+  - Special handling for consecutive holidays:
+    - Christmas/Boxing Day should be split between doctors when consecutive
+    - No special handling needed for Easter (Friday/Monday naturally split by the shift pattern)
 - Ensure pro-rata distribution of public holiday on-calls:
   - Track each doctor's public holiday on-call history over the past 24 months
   - Calculate target number of public holiday shifts based on doctor's weekly hours
@@ -58,6 +68,7 @@ The application will:
   - Generate monthly reports showing public holiday shift distribution across doctors
   - Flag any significant deviations from target allocations for admin review
 - Incorporate doctors' submitted unavailability dates into the roster generation process.
+- Note that quarterly roster periods allow for personnel changes and collection of availability preferences, with the Nov 1 - Jan 31 period being the most important quarter due to holidays.
 
 ### 2.3. Public Holiday Handling
 **Description**: The system must accurately identify and manage public holidays to assign appropriate on-call units and ensure fairness.

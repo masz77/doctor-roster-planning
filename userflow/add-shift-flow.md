@@ -1,5 +1,3 @@
-# Add Shift Flow
-
 flowchart TD
     Start([Start]) --> AdminLogin[Admin logs in]
     AdminLogin --> SelectRoster[Select roster period]
