@@ -21,3 +21,13 @@ I need to make sure that the roster generation algorithm you are creating can ge
 The main reason for this requirement is so that no one works two public holidays in a row. The only time this could happen is Christmas Day and Boxing Day. Because this year Christmas Day is on Thursday and Boxing Day is on Friday, no one has to work both public holidays. But next year Christmas Day is on Friday and Boxing Day is on Saturday, can you write the algorithm such that two doctors share/split the two public holidays? For example one doctor will work Friday and another will work Saturday and Sunday.
 This is another reason that the auto-generation of roster has to be able to take into account shifts that admin has locked in. Some doctors don't celebrate Christmas and have volunteered to work both Christmas Day and Boxing Day. I want to be able to enter a doctor into a roster for Christmas and Boxing Day but get the app to generate roster around what I have entered.
 As Good Friday is always on a Friday and Easter Monday is always on a Monday, this means two doctors will always be on-call for the Easter long weekend which works for me. No solution is required for Easter.
+
+Hi Duong, thank you for sending through the results of your shift assignment algorithm. Unfortunately, unless I am reading it wrong (which is highly likely), the outcome is not what I desire. Monday and Tuesday should be one doctor, Wednesday and Thursday should be one doctor and Friday, Saturday and Sunday should one doctor. I have attached the roster from June 2024 to May 2025 for your reference.
+
+In terms of report, it would be nice to have a page with the following information:
+At top of report page - Average on-call units per hour worked in last 12 months (all doctors) = x
+Then table with the following columns/fields:
+Doctor | Contracted Hours Per Week | Number of On-Call Units Last 12 Months | Number of On-Call Units per Contracted Hour | Number of Public Holiday On-Call In last 24 Months
+Rows (Doctors) with Number of On-Call Units per Contracted Hour < x should be highlighted red. These doctors are on-call less than average.
+Doctors who have not done on-call in 12 months should also be highlighted. Doctors who don't do any on-call (by swapping with colleagues after I publish the roster) have reduced annual leave according to the rules.
+Doctors who have not done public holiday on-call in last 24 months should also be highlighted. I can then try and manually amend roster to make them do public holiday on-call if required

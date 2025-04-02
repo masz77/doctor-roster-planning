@@ -1,13 +1,18 @@
 /**
- * Main function to assign doctors to shift assignments
+ * Main function to assign doctors to shifts
  * @param {Object[]} doctors - Array of doctor objects with availability and weekly hours
- * @param {Object[]} shiftAssignments - Array of shift assignment objects that need doctors assigned
+ * @param {Object[]} shifts - Array of shift objects that contain shift_assignments
  * @param {Object[]} publicHolidayHistory - History of public holiday shifts worked by doctors
- * @returns {Object[]} - Array of updated shift assignments with doctor_id filled in
+ * @returns {Object[]} - Array of updated shifts with doctors assigned to shift_assignments
  */
-function assignDoctorsToShiftAssignments(doctors, shiftAssignments, publicHolidayHistory) {
-  // Sort shift assignments chronologically by date
-  const sortedAssignments = sortAssignmentsByDate(shiftAssignments);
+function assignDoctorsToShifts(doctors, shifts, publicHolidayHistory) {
+  // Extract all shift assignments from shifts for processing
+  let allShiftAssignments = [];
+  shifts.forEach(shift => {
+    if (shift.shift_assignments && shift.shift_assignments.length > 0) {
+      allShiftAssignments = [...allShiftAssignments, ...shift.shift_assignments];
+    }
+  });
   
   // Pre-process data
   const totalWeeklyHours = calculateTotalWeeklyHours(doctors);
@@ -17,20 +22,23 @@ function assignDoctorsToShiftAssignments(doctors, shiftAssignments, publicHolida
   // Track assigned units per doctor
   const doctorUnits = initializeDoctorUnits(doctors);
   
-  // Create a new array to hold all updated assignments
-  const updatedAssignments = [...sortedAssignments];
+  // Group shift assignments by public holiday status
+  const publicHolidayAssignments = allShiftAssignments.filter(a => a.is_public_holiday_shift);
+  const regularAssignments = allShiftAssignments.filter(a => !a.is_public_holiday_shift);
   
   // First pass: Handle public holiday assignments
   processPublicHolidayAssignments(
-    updatedAssignments, 
+    publicHolidayAssignments, 
     doctors, 
     doctorUnits, 
     publicHolidayDeficits
   );
   
   // Second pass: Handle regular assignments (non-public holiday)
-  processRegularAssignments(
-    updatedAssignments, 
+  // Group by shift_id to ensure one doctor per shift
+  processRegularShifts(
+    shifts,
+    regularAssignments, 
     doctors, 
     doctorUnits, 
     doctorTargetPercentages
@@ -38,13 +46,383 @@ function assignDoctorsToShiftAssignments(doctors, shiftAssignments, publicHolida
   
   // Final validation and adjustment to ensure fair distribution
   validateAndAdjustAssignments(
-    updatedAssignments, 
+    allShiftAssignments, 
     doctors, 
     doctorUnits, 
     doctorTargetPercentages
   );
   
-  return updatedAssignments;
+  // Update the original shifts with the assigned doctors
+  updateShiftsWithAssignments(shifts, allShiftAssignments);
+  
+  return shifts;
+}
+
+/**
+ * Process regular shifts ensuring one doctor per shift
+ * @param {Object[]} shifts - Array of shift objects
+ * @param {Object[]} regularAssignments - Array of regular shift assignment objects
+ * @param {Object[]} doctors - Array of doctor objects
+ * @param {Object} doctorUnits - Map of doctor IDs to assigned units
+ * @param {Object} doctorTargetPercentages - Map of doctor IDs to target percentages
+ */
+function processRegularShifts(shifts, regularAssignments, doctors, doctorUnits, doctorTargetPercentages) {
+  // Sort shifts chronologically
+  const sortedShifts = [...shifts].sort((a, b) => {
+    return new Date(a.start_date) - new Date(b.start_date);
+  });
+  
+  // Process each shift
+  sortedShifts.forEach(shift => {
+    // Skip if this shift has no assignments or is already processed
+    if (!shift.shift_assignments || shift.shift_assignments.length === 0) {
+      return;
+    }
+    
+    // Skip if all assignments in this shift already have doctors assigned
+    const unassignedAssignments = shift.shift_assignments.filter(a => a.doctor_id === null);
+    if (unassignedAssignments.length === 0) {
+      // Update doctor units for pre-filled assignments
+      shift.shift_assignments.forEach(assignment => {
+        if (assignment.doctor_id !== null) {
+          doctorUnits[assignment.doctor_id] += assignment.units_assigned;
+        }
+      });
+      return;
+    }
+    
+    // Get the date range for this shift
+    const startDate = new Date(shift.start_date);
+    const endDate = new Date(shift.end_date);
+    
+    // Find eligible doctors (available for the entire shift period)
+    let eligibleDoctors = doctors.filter(doctor => {
+      // Check if doctor is available for all days in the shift period
+      let currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        if (isUnavailable(doctor, currentDate.toISOString().split('T')[0])) {
+          return false;
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+      return true;
+    });
+    
+    // Remove doctors assigned to adjacent dates
+    eligibleDoctors = removeWithAdjacentDates(eligibleDoctors, shift.start_date, regularAssignments);
+    
+    if (eligibleDoctors.length === 0) {
+      return; // No eligible doctors, leave unassigned for now
+    }
+    
+    // Calculate total units assigned so far
+    const totalUnitsAssigned = Object.values(doctorUnits).reduce((sum, units) => sum + units, 0);
+    
+    // Sort eligible doctors by pro-rata deficit
+    const sortedDoctors = sortDoctorsByProRataDeficit(
+      eligibleDoctors, 
+      doctorUnits, 
+      doctorTargetPercentages, 
+      totalUnitsAssigned
+    );
+    
+    // Assign all assignments in this shift to the same doctor
+    const assignedDoctor = sortedDoctors[0];
+    
+    // Update all assignments in this shift
+    shift.shift_assignments.forEach(assignment => {
+      // Only update if not already assigned
+      if (assignment.doctor_id === null) {
+        assignment.doctor_id = assignedDoctor.id;
+        
+        // Update doctor units
+        doctorUnits[assignedDoctor.id] += assignment.units_assigned;
+      }
+    });
+  });
+}
+
+/**
+ * Process public holiday assignments
+ * @param {Object[]} publicHolidayAssignments - Array of public holiday assignment objects
+ * @param {Object[]} doctors - Array of doctor objects
+ * @param {Object} doctorUnits - Map of doctor IDs to assigned units
+ * @param {Object} publicHolidayDeficits - Map of doctor IDs to public holiday deficits
+ */
+function processPublicHolidayAssignments(publicHolidayAssignments, doctors, doctorUnits, publicHolidayDeficits) {
+  // Group public holiday assignments by date
+  const holidayDateGroups = {};
+  
+  publicHolidayAssignments.forEach(assignment => {
+    if (!holidayDateGroups[assignment.date]) {
+      holidayDateGroups[assignment.date] = [];
+    }
+    holidayDateGroups[assignment.date].push(assignment);
+  });
+
+  // Identify Christmas Day and Boxing Day for special handling
+  const christmasPeriod = identifyChristmasPeriod(holidayDateGroups);
+  
+  // Track already assigned doctors for holiday periods to prevent consecutive assignments
+  const assignedHolidayDoctors = {};
+  
+  // Sort dates chronologically for sequential processing
+  const sortedDates = Object.keys(holidayDateGroups).sort((a, b) => {
+    return new Date(a) - new Date(b);
+  });
+  
+  // Process each public holiday date in chronological order
+  sortedDates.forEach(date => {
+    const assignments = holidayDateGroups[date];
+    
+    // Check if any assignments on this date are already assigned (pre-filled)
+    const hasPrefilledAssignments = assignments.some(a => a.doctor_id !== null);
+    
+    // If pre-filled, skip automatic assignment for this date
+    if (hasPrefilledAssignments) {
+      // Update doctor units for any pre-filled assignments
+      assignments.forEach(assignment => {
+        if (assignment.doctor_id !== null) {
+          doctorUnits[assignment.doctor_id] += assignment.units_assigned;
+          
+          // Track this doctor for holiday assignment
+          assignedHolidayDoctors[date] = assignment.doctor_id;
+        }
+      });
+      return;
+    }
+    
+    // Skip if this is part of Christmas period that needs special handling
+    if (christmasPeriod.isConsecutive && 
+        (date === christmasPeriod.christmasDay || date === christmasPeriod.boxingDay)) {
+      // Will be handled separately
+      return;
+    }
+    
+    // Find eligible doctors (not unavailable during this period)
+    let eligibleDoctors = filterAvailableDoctors(doctors, date);
+    
+    if (eligibleDoctors.length === 0) {
+      return; // No eligible doctors, leave unassigned for now
+    }
+    
+    // Identify doctors assigned to recent public holidays
+    const recentlyAssignedDoctorIds = findRecentlyAssignedDoctors(sortedDates, date, assignedHolidayDoctors);
+    
+    // Filter out doctors who have been assigned to recent holidays
+    if (recentlyAssignedDoctorIds.length > 0 && eligibleDoctors.length > recentlyAssignedDoctorIds.length) {
+      eligibleDoctors = eligibleDoctors.filter(doctor => !recentlyAssignedDoctorIds.includes(doctor.id));
+    }
+    
+    // If we've filtered out all doctors, use the original list as a fallback
+    if (eligibleDoctors.length === 0) {
+      eligibleDoctors = filterAvailableDoctors(doctors, date);
+    }
+    
+    // Sort by public holiday deficit (highest deficit first)
+    const sortedDoctors = sortDoctorsByPublicHolidayDeficit(eligibleDoctors, publicHolidayDeficits);
+    
+    // Assign all assignments for this date to the same doctor
+    const assignedDoctor = sortedDoctors[0];
+    
+    // Update all assignments for this date
+    assignments.forEach(assignment => {
+      assignment.doctor_id = assignedDoctor.id;
+      
+      // Update doctor units
+      doctorUnits[assignedDoctor.id] += assignment.units_assigned;
+    });
+    
+    // Track this doctor for holiday assignment
+    assignedHolidayDoctors[date] = assignedDoctor.id;
+  });
+
+  // Handle Christmas period if consecutive days
+  if (christmasPeriod.isConsecutive) {
+    handleConsecutiveChristmasPeriod(
+      publicHolidayAssignments, 
+      doctors, 
+      doctorUnits, 
+      publicHolidayDeficits, 
+      christmasPeriod,
+      holidayDateGroups,
+      assignedHolidayDoctors
+    );
+  }
+}
+
+/**
+ * Update original shifts with the assigned doctors from processed assignments
+ * @param {Object[]} shifts - Original array of shift objects
+ * @param {Object[]} allShiftAssignments - Array of processed shift assignments
+ */
+function updateShiftsWithAssignments(shifts, allShiftAssignments) {
+  // Create lookup map for assignments by ID
+  const assignmentMap = {};
+  allShiftAssignments.forEach(assignment => {
+    assignmentMap[assignment.id] = assignment;
+  });
+  
+  // Update each shift with its processed assignments
+  shifts.forEach(shift => {
+    if (shift.shift_assignments && shift.shift_assignments.length > 0) {
+      shift.shift_assignments = shift.shift_assignments.map(assignment => {
+        const processed = assignmentMap[assignment.id];
+        return processed || assignment;
+      });
+    }
+  });
+}
+
+/**
+ * Validate and adjust assignments to ensure fairness
+ * @param {Object[]} allAssignments - Array of all shift assignment objects
+ * @param {Object[]} doctors - Array of doctor objects
+ * @param {Object} doctorUnits - Map of doctor IDs to assigned units
+ * @param {Object} doctorTargetPercentages - Map of doctor IDs to target percentages
+ */
+function validateAndAdjustAssignments(allAssignments, doctors, doctorUnits, doctorTargetPercentages) {
+  // Calculate total units assigned
+  const totalUnits = Object.values(doctorUnits).reduce((sum, units) => sum + units, 0);
+  
+  // Calculate target units for each doctor
+  const doctorTargets = {};
+  doctors.forEach(doctor => {
+    doctorTargets[doctor.id] = totalUnits * doctorTargetPercentages[doctor.id];
+  });
+  
+  // Check for significant deviations from target
+  const ACCEPTABLE_THRESHOLD = 2; // Units of deviation considered acceptable
+  const ADJUSTMENT_THRESHOLD = 4; // Units of deviation that trigger adjustment attempts
+  
+  const deviations = [];
+  
+  doctors.forEach(doctor => {
+    const deviation = doctorUnits[doctor.id] - doctorTargets[doctor.id];
+    
+    if (Math.abs(deviation) > ACCEPTABLE_THRESHOLD) {
+      deviations.push({
+        doctorId: doctor.id,
+        deviation: deviation,
+        needsAdjustment: Math.abs(deviation) > ADJUSTMENT_THRESHOLD
+      });
+    }
+  });
+  
+  // If severe deviations exist, attempt to rebalance
+  const severeDeviations = deviations.filter(d => d.needsAdjustment);
+  
+  if (severeDeviations.length > 0) {
+    attemptRebalancingByShift(allAssignments, severeDeviations, doctors, doctorUnits, doctorTargets);
+  }
+}
+
+/**
+ * Attempt to rebalance assignments by shift to reduce severe deviations
+ * @param {Object[]} allAssignments - Array of all shift assignment objects
+ * @param {Object[]} deviations - Array of deviation objects
+ * @param {Object[]} doctors - Array of doctor objects
+ * @param {Object} doctorUnits - Map of doctor IDs to assigned units
+ * @param {Object} doctorTargets - Map of doctor IDs to target units
+ */
+function attemptRebalancingByShift(allAssignments, deviations, doctors, doctorUnits, doctorTargets) {
+  // Sort deviations - overallocated doctors first (positive deviation)
+  deviations.sort((a, b) => b.deviation - a.deviation);
+  
+  // Get doctors who are overallocated and underallocated
+  const overallocatedDoctors = deviations.filter(d => d.deviation > 0).map(d => d.doctorId);
+  const underallocatedDoctors = deviations.filter(d => d.deviation < 0).map(d => d.doctorId);
+  
+  if (overallocatedDoctors.length === 0 || underallocatedDoctors.length === 0) {
+    return; // Can't rebalance if all deviations are in the same direction
+  }
+  
+  // Group assignments by shift_id to move entire shifts between doctors
+  const shiftGroups = {};
+  allAssignments.forEach(assignment => {
+    if (!shiftGroups[assignment.shift_id]) {
+      shiftGroups[assignment.shift_id] = [];
+    }
+    shiftGroups[assignment.shift_id].push(assignment);
+  });
+  
+  // For each overallocated doctor, try to reassign some of their shifts
+  for (const doctorId of overallocatedDoctors) {
+    if (underallocatedDoctors.length === 0) break;
+    
+    // Group this doctor's assignments by shift_id
+    const doctorShiftGroups = {};
+    Object.entries(shiftGroups).forEach(([shiftId, assignments]) => {
+      // Check if all assignments in this shift are assigned to this doctor
+      if (assignments.every(a => a.doctor_id === doctorId)) {
+        doctorShiftGroups[shiftId] = assignments;
+      }
+    });
+    
+    // Sort the shifts by date (earliest first)
+    const sortedShiftIds = Object.keys(doctorShiftGroups).sort((a, b) => {
+      const dateA = new Date(doctorShiftGroups[a][0].date);
+      const dateB = new Date(doctorShiftGroups[b][0].date);
+      return dateA - dateB;
+    });
+    
+    // Try to reassign each shift
+    for (const shiftId of sortedShiftIds) {
+      const shiftAssignments = doctorShiftGroups[shiftId];
+      
+      // Skip public holiday shifts
+      if (shiftAssignments.some(a => a.is_public_holiday_shift)) {
+        continue;
+      }
+      
+      // Skip if this doctor is now properly allocated
+      if (doctorUnits[doctorId] <= doctorTargets[doctorId]) {
+        break;
+      }
+      
+      // Calculate total units in this shift
+      const shiftUnits = shiftAssignments.reduce((sum, a) => sum + a.units_assigned, 0);
+      
+      // Try each underallocated doctor
+      for (const underallocatedDoctorId of [...underallocatedDoctors]) {
+        const underallocatedDoctor = doctors.find(d => d.id === underallocatedDoctorId);
+        
+        // Check if doctor is available for all dates in this shift
+        const isAvailableForAllDates = shiftAssignments.every(assignment => {
+          return !isUnavailable(underallocatedDoctor, assignment.date);
+        });
+        
+        if (!isAvailableForAllDates) continue;
+        
+        // Check if doctor has adjacent dates
+        const hasAdjacentDates = shiftAssignments.some(assignment => {
+          return hasAdjacentDateAssignment(underallocatedDoctor, assignment.date, allAssignments);
+        });
+        
+        if (hasAdjacentDates) continue;
+        
+        // Reassign the entire shift
+        shiftAssignments.forEach(assignment => {
+          // Update the assignment
+          assignment.doctor_id = underallocatedDoctorId;
+        });
+        
+        // Update units
+        doctorUnits[doctorId] -= shiftUnits;
+        doctorUnits[underallocatedDoctorId] += shiftUnits;
+        
+        // If doctor is no longer underallocated, remove from the list
+        if (doctorUnits[underallocatedDoctorId] >= doctorTargets[underallocatedDoctorId]) {
+          underallocatedDoctors.splice(underallocatedDoctors.indexOf(underallocatedDoctorId), 1);
+        }
+        
+        // If we've fixed the overallocation, break
+        if (doctorUnits[doctorId] <= doctorTargets[doctorId]) {
+          break;
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -156,124 +534,6 @@ function initializeDoctorUnits(doctors) {
     doctorUnits[doctor.id] = 0;
   });
   return doctorUnits;
-}
-
-/**
- * Process public holiday assignments (first pass)
- * @param {Object[]} allAssignments - Array of all shift assignment objects
- * @param {Object[]} doctors - Array of doctor objects
- * @param {Object} doctorUnits - Map of doctor IDs to assigned units
- * @param {Object} publicHolidayDeficits - Map of doctor IDs to public holiday deficits
- */
-function processPublicHolidayAssignments(allAssignments, doctors, doctorUnits, publicHolidayDeficits) {
-  // Find public holiday assignments
-  const publicHolidayAssignments = allAssignments.filter(a => a.is_public_holiday_shift);
-  
-  // Group public holiday assignments by date (we want to assign all assignments for a date to the same doctor)
-  const holidayDateGroups = {};
-  
-  publicHolidayAssignments.forEach(assignment => {
-    if (!holidayDateGroups[assignment.date]) {
-      holidayDateGroups[assignment.date] = [];
-    }
-    holidayDateGroups[assignment.date].push(assignment);
-  });
-
-  // Identify Christmas Day and Boxing Day for special handling
-  const christmasPeriod = identifyChristmasPeriod(holidayDateGroups);
-  
-  // Track already assigned doctors for holiday periods to prevent consecutive assignments
-  const assignedHolidayDoctors = {};
-  
-  // Sort dates chronologically for sequential processing
-  const sortedDates = Object.keys(holidayDateGroups).sort((a, b) => {
-    return new Date(a) - new Date(b);
-  });
-  
-  // Process each public holiday date in chronological order
-  sortedDates.forEach(date => {
-    const assignments = holidayDateGroups[date];
-    
-    // Check if any assignments on this date are already assigned (pre-filled)
-    const hasPrefilledAssignments = assignments.some(a => a.doctor_id !== null);
-    
-    // If pre-filled, skip automatic assignment for this date
-    if (hasPrefilledAssignments) {
-      // Update doctor units for any pre-filled assignments
-      assignments.forEach(assignment => {
-        if (assignment.doctor_id !== null) {
-          doctorUnits[assignment.doctor_id] += assignment.units_assigned;
-          
-          // Track this doctor for holiday assignment
-          assignedHolidayDoctors[date] = assignment.doctor_id;
-        }
-      });
-      return;
-    }
-    
-    // Skip if this is part of Christmas period that needs special handling
-    if (christmasPeriod.isConsecutive && 
-        (date === christmasPeriod.christmasDay || date === christmasPeriod.boxingDay)) {
-      // Will be handled separately
-      return;
-    }
-    
-    // Find eligible doctors (not unavailable during this period)
-    let eligibleDoctors = filterAvailableDoctors(doctors, date);
-    
-    if (eligibleDoctors.length === 0) {
-      return; // No eligible doctors, leave unassigned for now
-    }
-    
-    // Identify doctors assigned to recent public holidays
-    const recentlyAssignedDoctorIds = findRecentlyAssignedDoctors(sortedDates, date, assignedHolidayDoctors);
-    
-    // Filter out doctors who have been assigned to recent holidays
-    if (recentlyAssignedDoctorIds.length > 0 && eligibleDoctors.length > recentlyAssignedDoctorIds.length) {
-      eligibleDoctors = eligibleDoctors.filter(doctor => !recentlyAssignedDoctorIds.includes(doctor.id));
-    }
-    
-    // If we've filtered out all doctors, use the original list as a fallback
-    if (eligibleDoctors.length === 0) {
-      eligibleDoctors = filterAvailableDoctors(doctors, date);
-    }
-    
-    // Sort by public holiday deficit (highest deficit first)
-    const sortedDoctors = sortDoctorsByPublicHolidayDeficit(eligibleDoctors, publicHolidayDeficits);
-    
-    // Assign all assignments for this date to the same doctor
-    const assignedDoctor = sortedDoctors[0];
-    
-    // Update all assignments for this date
-    assignments.forEach(assignment => {
-      const index = allAssignments.findIndex(a => a.id === assignment.id);
-      if (index !== -1) {
-        allAssignments[index] = {
-          ...allAssignments[index],
-          doctor_id: assignedDoctor.id
-        };
-        
-        // Update doctor units
-        doctorUnits[assignedDoctor.id] += assignment.units_assigned;
-      }
-    });
-    
-    // Track this doctor for holiday assignment
-    assignedHolidayDoctors[date] = assignedDoctor.id;
-  });
-
-  // Handle Christmas period if consecutive days
-  if (christmasPeriod.isConsecutive) {
-    handleConsecutiveChristmasPeriod(
-      allAssignments, 
-      doctors, 
-      doctorUnits, 
-      publicHolidayDeficits, 
-      christmasPeriod,
-      holidayDateGroups,
-      assignedHolidayDoctors
-    );
-  }
 }
 
 /**
@@ -556,92 +816,6 @@ function assignHolidayToDoctor(
 }
 
 /**
- * Process regular assignments (second pass)
- * @param {Object[]} allAssignments - Array of all shift assignment objects
- * @param {Object[]} doctors - Array of doctor objects
- * @param {Object} doctorUnits - Map of doctor IDs to assigned units
- * @param {Object} doctorTargetPercentages - Map of doctor IDs to target percentages
- */
-function processRegularAssignments(allAssignments, doctors, doctorUnits, doctorTargetPercentages) {
-  // Group regular assignments by shift_id (we want to process each shift pattern together)
-  const shiftGroups = {};
-  
-  allAssignments.forEach(assignment => {
-    if (!assignment.is_public_holiday_shift && assignment.doctor_id === null) {
-      if (!shiftGroups[assignment.shift_id]) {
-        shiftGroups[assignment.shift_id] = [];
-      }
-      shiftGroups[assignment.shift_id].push(assignment);
-    }
-  });
-  
-  // Process shifts in chronological order
-  const shiftIds = Object.keys(shiftGroups).sort((a, b) => {
-    const dateA = new Date(shiftGroups[a][0].date);
-    const dateB = new Date(shiftGroups[b][0].date);
-    return dateA - dateB;
-  });
-  
-  shiftIds.forEach(shiftId => {
-    const shiftAssignments = shiftGroups[shiftId];
-    
-    // Group assignments by date
-    const dateGroups = {};
-    shiftAssignments.forEach(assignment => {
-      if (!dateGroups[assignment.date]) {
-        dateGroups[assignment.date] = [];
-      }
-      dateGroups[assignment.date].push(assignment);
-    });
-    
-    // Get all dates for this shift
-    const dates = Object.keys(dateGroups).sort((a, b) => new Date(a) - new Date(b));
-    
-    // For each date, assign doctors
-    dates.forEach(date => {
-      const dateAssignments = dateGroups[date];
-      
-      // Find eligible doctors (not unavailable on this date)
-      let eligibleDoctors = filterAvailableDoctors(doctors, date);
-      
-      // Remove doctors assigned to adjacent dates
-      eligibleDoctors = removeWithAdjacentDates(eligibleDoctors, date, allAssignments);
-      
-      if (eligibleDoctors.length === 0) {
-        return; // No eligible doctors, leave unassigned for now
-      }
-      
-      // Calculate total units assigned so far
-      const totalUnitsAssigned = Object.values(doctorUnits).reduce((sum, units) => sum + units, 0);
-      
-      // Sort eligible doctors by pro-rata deficit
-      const sortedDoctors = sortDoctorsByProRataDeficit(eligibleDoctors, doctorUnits, doctorTargetPercentages, totalUnitsAssigned);
-      
-      // Assign all assignments for this date to doctors, starting with the one with highest deficit
-      let doctorIndex = 0;
-      
-      dateAssignments.forEach(assignment => {
-        // Get next doctor (rotating through the sorted list if needed)
-        const assignedDoctor = sortedDoctors[doctorIndex % sortedDoctors.length];
-        doctorIndex++;
-        
-        // Update assignment
-        const index = allAssignments.findIndex(a => a.id === assignment.id);
-        if (index !== -1) {
-          allAssignments[index] = {
-            ...allAssignments[index],
-            doctor_id: assignedDoctor.id
-          };
-          
-          // Update doctor units
-          doctorUnits[assignedDoctor.id] += assignment.units_assigned;
-        }
-      });
-    });
-  });
-}
-
-/**
  * Filter doctors who are available on a specific date
  * @param {Object[]} doctors - Array of doctor objects
  * @param {string} date - Date string in ISO format (YYYY-MM-DD)
@@ -753,130 +927,9 @@ function sortDoctorsByProRataDeficit(doctors, doctorUnits, doctorTargetPercentag
   });
 }
 
-/**
- * Validate and adjust assignments to ensure fairness
- * @param {Object[]} allAssignments - Array of all shift assignment objects
- * @param {Object[]} doctors - Array of doctor objects
- * @param {Object} doctorUnits - Map of doctor IDs to assigned units
- * @param {Object} doctorTargetPercentages - Map of doctor IDs to target percentages
- */
-function validateAndAdjustAssignments(allAssignments, doctors, doctorUnits, doctorTargetPercentages) {
-  // Calculate total units assigned
-  const totalUnits = Object.values(doctorUnits).reduce((sum, units) => sum + units, 0);
-  
-  // Calculate target units for each doctor
-  const doctorTargets = {};
-  doctors.forEach(doctor => {
-    doctorTargets[doctor.id] = totalUnits * doctorTargetPercentages[doctor.id];
-  });
-  
-  // Check for significant deviations from target
-  const ACCEPTABLE_THRESHOLD = 2; // Units of deviation considered acceptable
-  const ADJUSTMENT_THRESHOLD = 4; // Units of deviation that trigger adjustment attempts
-  
-  const deviations = [];
-  
-  doctors.forEach(doctor => {
-    const deviation = doctorUnits[doctor.id] - doctorTargets[doctor.id];
-    
-    if (Math.abs(deviation) > ACCEPTABLE_THRESHOLD) {
-      deviations.push({
-        doctorId: doctor.id,
-        deviation: deviation,
-        needsAdjustment: Math.abs(deviation) > ADJUSTMENT_THRESHOLD
-      });
-    }
-  });
-  
-  // If severe deviations exist, attempt to rebalance
-  const severeDeviations = deviations.filter(d => d.needsAdjustment);
-  
-  if (severeDeviations.length > 0) {
-    attemptRebalancing(allAssignments, severeDeviations, doctors, doctorUnits, doctorTargets);
-  }
-}
-
-/**
- * Attempt to rebalance assignments to reduce severe deviations
- * @param {Object[]} allAssignments - Array of all shift assignment objects
- * @param {Object[]} deviations - Array of deviation objects
- * @param {Object[]} doctors - Array of doctor objects
- * @param {Object} doctorUnits - Map of doctor IDs to assigned units
- * @param {Object} doctorTargets - Map of doctor IDs to target units
- */
-function attemptRebalancing(allAssignments, deviations, doctors, doctorUnits, doctorTargets) {
-  // Sort deviations - overallocated doctors first (positive deviation)
-  deviations.sort((a, b) => b.deviation - a.deviation);
-  
-  // Get doctors who are overallocated and underallocated
-  const overallocatedDoctors = deviations.filter(d => d.deviation > 0).map(d => d.doctorId);
-  const underallocatedDoctors = deviations.filter(d => d.deviation < 0).map(d => d.doctorId);
-  
-  if (overallocatedDoctors.length === 0 || underallocatedDoctors.length === 0) {
-    return; // Can't rebalance if all deviations are in the same direction
-  }
-  
-  // For each overallocated doctor, try to reassign some of their assignments
-  for (const doctorId of overallocatedDoctors) {
-    if (underallocatedDoctors.length === 0) break;
-    
-    // Get non-public holiday assignments for this doctor
-    const doctorAssignments = allAssignments.filter(a => 
-      a.doctor_id === doctorId && !a.is_public_holiday_shift
-    );
-    
-    // Sort assignments chronologically
-    doctorAssignments.sort((a, b) => new Date(a.date) - new Date(b.date));
-    
-    // Try to reassign each assignment
-    for (const assignment of doctorAssignments) {
-      // Skip if this doctor is now properly allocated
-      if (doctorUnits[doctorId] <= doctorTargets[doctorId]) {
-        break;
-      }
-      
-      // Try each underallocated doctor
-      for (const underallocatedDoctorId of [...underallocatedDoctors]) {
-        const underallocatedDoctor = doctors.find(d => d.id === underallocatedDoctorId);
-        
-        // Check if doctor is available for this date
-        if (isUnavailable(underallocatedDoctor, assignment.date)) continue;
-        
-        // Check if doctor has adjacent dates
-        if (hasAdjacentDateAssignment(underallocatedDoctor, assignment.date, allAssignments)) continue;
-        
-        // Reassign the assignment
-        const assignmentIndex = allAssignments.findIndex(a => a.id === assignment.id);
-        
-        if (assignmentIndex !== -1) {
-          // Update the assignment
-          allAssignments[assignmentIndex] = {
-            ...allAssignments[assignmentIndex],
-            doctor_id: underallocatedDoctorId
-          };
-          
-          // Update units
-          doctorUnits[doctorId] -= assignment.units_assigned;
-          doctorUnits[underallocatedDoctorId] += assignment.units_assigned;
-          
-          // If doctor is no longer underallocated, remove from the list
-          if (doctorUnits[underallocatedDoctorId] >= doctorTargets[underallocatedDoctorId]) {
-            underallocatedDoctors.splice(underallocatedDoctors.indexOf(underallocatedDoctorId), 1);
-          }
-          
-          // If we've fixed the overallocation, break
-          if (doctorUnits[doctorId] <= doctorTargets[doctorId]) {
-            break;
-          }
-        }
-      }
-    }
-  }
-}
-
 // Export the main function
 module.exports = {
-  assignDoctorsToShiftAssignments,
+  assignDoctorsToShifts,
   // Export helper functions for testing
   calculateTotalWeeklyHours,
   calculateDoctorTargetPercentages,
