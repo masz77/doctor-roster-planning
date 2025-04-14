@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        .header {
+            background-color: #00457C;
+            padding: 20px;
+            text-align: center;
+        }
+        .logo {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .content {
+            padding: 20px;
+            background-color: #ffffff;
+        }
+        .footer {
+            background-color: #f8f8f8;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            color: #666666;
+        }
+        .details {
+            background-color: #f8f8f8;
+            padding: 15px;
+            border-left: 4px solid #00457C;
+            margin: 15px 0;
+        }
+        .details-heading {
+            color: #00457C;
+            margin-bottom: 15px;
+        }
+        .date-input {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .date-input label {
+            min-width: 120px;
+        }
+        .date-input input {
+            padding: 8px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .date-input textarea {
+            padding: 8px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            overflow: hidden;
+            resize: none;
+            min-height: 34px; /* Same height as input fields */
+        }
+        /* Special styling for period inputs */
+        #period-inputs .date-input {
+            flex-direction: column;
+            align-items: flex-start;
+            background-color: #f8f8f8;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        #period-inputs .date-input .date-range-inputs {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        #period-inputs .date-input textarea {
+            width: calc(100% - 18px); /* Account for padding */
+        }
+        /* Make date inputs match period inputs styling */
+        #date-inputs .date-input {
+            flex-direction: column;
+            align-items: flex-start;
+            background-color: #f8f8f8;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        #date-inputs .date-input > label {
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        #date-inputs .date-input .date-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        #date-inputs .date-input .delete-icon {
+            align-self: flex-end;
+        }
+        #date-inputs .date-input textarea {
+            width: calc(100% - 18px); /* Account for padding */
+        }
+        .delete-icon {
+            cursor: pointer;
+            color: red;
+            font-weight: bold;
+            background: none;
+            border: none;
+            font-size: 18px;
+        }
+        .button-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .button {
+            display: inline-block;
+            background-color: #00457C;
+            color: #ffffff !important;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .add-button {
+            margin-top: 10px;
+            background-color: #28a745;
+        }
+        #error-messages {
+            color: red;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        .success-message {
+            color: #28a745;
+            background-color: #f8f8f8;
+            padding: 20px;
+            border-left: 4px solid #28a745;
+            margin: 20px 0;
+            font-weight: bold;
+            font-size: 18px;
+            text-align: center;
+        }
+    </style>
+    <script>
+        const selectionStart = new Date('[__Start_Date__]');
+        const selectionEnd = new Date('[__End_Date__]');
+
+        function formatDate(date) {
+            return date.toISOString().split('T')[0];
+        }
+
+        // Function to auto-resize text areas based on content
+        function autoResizeTextarea(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = (textarea.scrollHeight) + 'px';
+        }
+
+        function addDateInput() {
+            const container = document.getElementById('date-inputs');
+            const count = container.children.length + 1;
+            const div = document.createElement('div');
+            div.className = 'date-input';
+            div.innerHTML = `
+                <label for="date${count}">Unavailable Date ${count}:</label>
+                <div class="date-container">
+                    <span>Date:</span>
+                    <input type="date" id="date${count}" name="unavailable_date_${count}" required min="${formatDate(selectionStart)}" max="${formatDate(selectionEnd)}">
+                    <button type="button" class="delete-icon" onclick="this.closest('.date-input').remove()">×</button>
+                </div>
+                <textarea name="reason_${count}" placeholder="Optional reason..." oninput="autoResizeTextarea(this)"></textarea>
+            `;
+            container.appendChild(div);
+            
+            // Initialize the new textarea
+            const newTextarea = div.querySelector('textarea');
+            autoResizeTextarea(newTextarea);
+        }
+
+        function addPeriodInput() {
+            const container = document.getElementById('period-inputs');
+            const count = container.children.length + 1;
+            const div = document.createElement('div');
+            div.className = 'date-input';
+            div.innerHTML = `
+                <label>Unavailable Period ${count}:</label>
+                <div class="date-range-inputs">
+                    <span>From:</span>
+                    <input type="date" name="unavailable_from_${count}" required min="${formatDate(selectionStart)}" max="${formatDate(selectionEnd)}">
+                    <span>To:</span>
+                    <input type="date" name="unavailable_to_${count}" required min="${formatDate(selectionStart)}" max="${formatDate(selectionEnd)}">
+                    <button type="button" class="delete-icon" onclick="this.closest('.date-input').remove()">×</button>
+                </div>
+                <textarea name="period_reason_${count}" placeholder="Optional reason..." oninput="autoResizeTextarea(this)"></textarea>
+            `;
+            container.appendChild(div);
+            
+            // Initialize the new textarea
+            const newTextarea = div.querySelector('textarea');
+            autoResizeTextarea(newTextarea);
+        }
+
+        function displayErrors(errors) {
+            const errorDiv = document.getElementById('error-messages');
+            errorDiv.innerHTML = errors.join('<br>');
+        }
+
+        async function submitForm(event) {
+            event.preventDefault();
+            const errors = [];
+            document.getElementById('error-messages').innerHTML = "";
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const doctorId = urlParams.get('doctor_id');
+
+            if (!doctorId) {
+                errors.push("Missing doctor_id in URL.");
+            }
+
+            // Process date inputs
+            const dateInputs = document.querySelectorAll('#date-inputs .date-input');
+            const dates = [];
+            const dateSet = new Set();
+
+            dateInputs.forEach((input, index) => {
+                const dateVal = input.querySelector('input').value;
+                const reason = input.querySelector('textarea').value;
+                if (dateVal) {
+                    const dateObj = new Date(dateVal);
+                    if (dateObj < selectionStart || dateObj > selectionEnd) {
+                        errors.push(`Date ${index + 1} is outside the selection period.`);
+                    }
+                    if (dateSet.has(dateVal)) {
+                        errors.push(`Date ${index + 1} is a duplicate.`);
+                    } else {
+                        dateSet.add(dateVal);
+                        dates.push({ date: dateVal, reason });
+                    }
+                }
+            });
+
+            // Process period inputs - process all period inputs now
+            const periodInputs = document.querySelectorAll('#period-inputs .date-input');
+            periodInputs.forEach((input, index) => {
+                const from = input.querySelector('input[name^="unavailable_from"]').value;
+                const to = input.querySelector('input[name^="unavailable_to"]').value;
+                const reason = input.querySelector('textarea[name^="period_reason"]').value;
+                
+                if (from && to) {
+                    const fromDate = new Date(from);
+                    const toDate = new Date(to);
+                    if (fromDate > toDate) {
+                        errors.push(`Unavailable Period ${index + 1} has 'From' date after 'To' date.`);
+                    }
+                    if (fromDate < selectionStart || toDate > selectionEnd) {
+                        errors.push(`Unavailable Period ${index + 1} is outside the selection period.`);
+                    }
+                    
+                    // Add period as an entry in the dates array with period object instead of date
+                    dates.push({
+                        period: {
+                            from,
+                            to
+                        },
+                        reason
+                    });
+                }
+            });
+
+            // If there are errors, display them inline and do not submit.
+            if (errors.length > 0) {
+                displayErrors(errors);
+                return;
+            }
+
+            // Check if we have at least one date or period
+            if (dates.length === 0) {
+                displayErrors(["Please add at least one unavailable date or period."]);
+                return;
+            }
+
+            // Prepare payload with dates array containing both individual dates and period
+            const payload = { 
+                doctor_id: doctorId,
+                dates // Contains both individual dates and period entries
+            };
+
+            // Submit the form data
+            try {
+                const response = await fetch('https://xh1h-uqwm-lutz.n7.xano.io/api:R65C5G2s/webhook/doctors/unavailability_periods', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (response.ok) {
+                    // Hide the form
+                    document.getElementById('unavailability-form').style.display = 'none';
+                    
+                    // Hide the instruction paragraph
+                    const paragraphs = document.querySelectorAll('.content p');
+                    paragraphs.forEach(p => {
+                        if (p.textContent.includes('Please select all the dates')) {
+                            p.style.display = 'none';
+                        }
+                    });
+                    
+                    // Display the success message with styling
+                    const successDiv = document.createElement('div');
+                    successDiv.className = 'success-message';
+                    successDiv.innerHTML = "Your unavailable dates have been submitted successfully.";
+                    
+                    // Insert success message after the details div
+                    const detailsDiv = document.querySelector('.details');
+                    detailsDiv.parentNode.insertBefore(successDiv, detailsDiv.nextSibling);
+                    
+                    // Hide error messages div
+                    document.getElementById('error-messages').style.display = 'none';
+                } else {
+                    displayErrors(["There was an error submitting your unavailable dates."]);
+                }
+            } catch (e) {
+                displayErrors(["There was an error submitting your unavailable dates."]);
+            }
+        }
+
+        window.onload = function () {
+            document.getElementById('unavailability-form').addEventListener('submit', submitForm);
+            const firstInput = document.getElementById('date1');
+            if (firstInput) {
+                firstInput.min = formatDate(selectionStart);
+                firstInput.max = formatDate(selectionEnd);
+            }
+            
+            // Initialize all existing textareas
+            document.querySelectorAll('textarea').forEach(textarea => {
+                textarea.addEventListener('input', function() {
+                    autoResizeTextarea(this);
+                });
+                autoResizeTextarea(textarea);
+            });
+        };
+    </script>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div class="logo">StatRoster App</div>
+    </div>
+
+    <div class="content">
+        <p>Dear Dr. [__DR_Name],</p>
+
+        <p>We are preparing the shift schedule and need to know your unavailable dates during the following period:</p>
+
+        <div class="details">
+            <h3 class="details-heading">📆 Selection Period:</h3>
+            <p><strong>From:</strong> [__Start_Date__] &nbsp; <strong>To:</strong> [__End_Date__]</p>
+        </div>
+
+        <!-- Inline error messages will be shown here -->
+        <div id="error-messages"></div>
+
+        <p>Please select all the dates you are unavailable and optionally add a reason:</p>
+
+        <form id="unavailability-form">
+            <div id="date-inputs">
+                <div class="date-input">
+                    <label for="date1">Unavailable Date 1:</label>
+                    <div class="date-container">
+                        <span>Date:</span>
+                        <input type="date" id="date1" name="unavailable_date_1" required>
+                        <button type="button" class="delete-icon" onclick="this.closest('.date-input').remove()">×</button>
+                    </div>
+                    <textarea name="reason_1" placeholder="Optional reason..." oninput="autoResizeTextarea(this)"></textarea>
+                </div>
+            </div>
+            <div class="button-container">
+                <button type="button" class="button add-button" onclick="addDateInput()">Add Another Date</button>
+            </div>
+
+            <div id="period-inputs"></div>
+            <div class="button-container">
+                <button type="button" class="button add-button" onclick="addPeriodInput()">Add Unavailable Period</button>
+            </div>
+
+            <div class="button-container">
+                <button type="submit" class="button">Submit Dates</button>
+            </div>
+        </form>
+
+        <p>If you need to indicate more dates, please reply to this email or contact us directly.</p>
+
+        <p>Thank you for helping us with scheduling!</p>
+
+        <p>Best regards,<br>StatRoster App Team</p>
+    </div>
+
+    <div class="footer">
+        <p>This is an automated message. Please do not reply directly unless you need assistance.</p>
+        <p>© StatRoster App. All rights reserved.</p>
+        <p><small>This email contains confidential information and is intended only for the named recipient. If you have received this email in error, please notify the sender immediately.</small></p>
+    </div>
+</div>
+</body>
+</html>

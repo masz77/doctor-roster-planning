@@ -27,7 +27,7 @@ function assignDoctorsToShifts(doctors, shifts, publicHolidayHistory) {
   const regularAssignments = allShiftAssignments.filter(a => !a.is_public_holiday_shift);
   
   // First pass: Handle public holiday assignments
-  processPublicHolidayAssignments(
+  const processedShiftIds = processPublicHolidayAssignments(
     publicHolidayAssignments, 
     doctors, 
     doctorUnits, 
@@ -41,7 +41,9 @@ function assignDoctorsToShifts(doctors, shifts, publicHolidayHistory) {
     regularAssignments, 
     doctors, 
     doctorUnits, 
-    doctorTargetPercentages
+    doctorTargetPercentages,
+    processedShiftIds,
+    allShiftAssignments
   );
   
   // Final validation and adjustment to ensure fair distribution
@@ -65,8 +67,10 @@ function assignDoctorsToShifts(doctors, shifts, publicHolidayHistory) {
  * @param {Object[]} doctors - Array of doctor objects
  * @param {Object} doctorUnits - Map of doctor IDs to assigned units
  * @param {Object} doctorTargetPercentages - Map of doctor IDs to target percentages
+ * @param {Set} processedShiftIds - Set of shift IDs that have already been processed
+ * @param {Object[]} allShiftAssignments - All shift assignments for reference
  */
-function processRegularShifts(shifts, regularAssignments, doctors, doctorUnits, doctorTargetPercentages) {
+function processRegularShifts(shifts, regularAssignments, doctors, doctorUnits, doctorTargetPercentages, processedShiftIds, allShiftAssignments) {
   // Sort shifts chronologically
   const sortedShifts = [...shifts].sort((a, b) => {
     return new Date(a.start_date) - new Date(b.start_date);
@@ -76,6 +80,25 @@ function processRegularShifts(shifts, regularAssignments, doctors, doctorUnits, 
   sortedShifts.forEach(shift => {
     // Skip if this shift has no assignments or is already processed
     if (!shift.shift_assignments || shift.shift_assignments.length === 0) {
+      return;
+    }
+    
+    // Skip if this shift ID has already been processed by the public holiday pass
+    if (processedShiftIds.has(shift.id)) {
+      // For shifts containing both public holiday and regular assignments,
+      // we need to assign the same doctor to all assignments within the shift
+      const holidayAssignments = shift.shift_assignments.filter(a => a.is_public_holiday_shift);
+      if (holidayAssignments.length > 0 && holidayAssignments[0].doctor_id) {
+        const assignedDoctorId = holidayAssignments[0].doctor_id;
+        
+        // Assign the same doctor to all non-holiday assignments in this shift
+        shift.shift_assignments.forEach(assignment => {
+          if (!assignment.is_public_holiday_shift && assignment.doctor_id === null) {
+            assignment.doctor_id = assignedDoctorId;
+            doctorUnits[assignedDoctorId] += assignment.units_assigned;
+          }
+        });
+      }
       return;
     }
     
@@ -109,7 +132,7 @@ function processRegularShifts(shifts, regularAssignments, doctors, doctorUnits, 
     });
     
     // Remove doctors assigned to adjacent dates
-    eligibleDoctors = removeWithAdjacentDates(eligibleDoctors, shift.start_date, regularAssignments);
+    eligibleDoctors = removeWithAdjacentDates(eligibleDoctors, shift.start_date, allShiftAssignments);
     
     if (eligibleDoctors.length === 0) {
       return; // No eligible doctors, leave unassigned for now
@@ -171,6 +194,9 @@ function processPublicHolidayAssignments(publicHolidayAssignments, doctors, doct
     return new Date(a) - new Date(b);
   });
   
+  // Track shifts that have been processed to handle mixed shifts correctly
+  const processedShiftIds = new Set();
+  
   // Process each public holiday date in chronological order
   sortedDates.forEach(date => {
     const assignments = holidayDateGroups[date];
@@ -187,6 +213,9 @@ function processPublicHolidayAssignments(publicHolidayAssignments, doctors, doct
           
           // Track this doctor for holiday assignment
           assignedHolidayDoctors[date] = assignment.doctor_id;
+          
+          // Mark this shift as processed
+          processedShiftIds.add(assignment.shift_id);
         }
       });
       return;
@@ -231,6 +260,9 @@ function processPublicHolidayAssignments(publicHolidayAssignments, doctors, doct
       
       // Update doctor units
       doctorUnits[assignedDoctor.id] += assignment.units_assigned;
+      
+      // Mark this shift as processed
+      processedShiftIds.add(assignment.shift_id);
     });
     
     // Track this doctor for holiday assignment
@@ -249,6 +281,9 @@ function processPublicHolidayAssignments(publicHolidayAssignments, doctors, doct
       assignedHolidayDoctors
     );
   }
+  
+  // Return the set of processed shift IDs
+  return processedShiftIds;
 }
 
 /**

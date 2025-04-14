@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .header {
+            background-color: #00457C;
+            padding: 20px;
+            text-align: center;
+        }
+        .logo {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .content {
+            padding: 20px;
+            background-color: #ffffff;
+        }
+        .footer {
+            background-color: #f8f8f8;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            color: #666666;
+        }
+        .button {
+            display: inline-block;
+            background-color: #00457C;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 10px 5px;
+        }
+        .details {
+            background-color: #f8f8f8;
+            padding: 15px;
+            border-left: 4px solid #00457C;
+            margin: 15px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">Roster App
+        </div>
+    </div>
+    
+    <div class="content">
+        <p>Dear Dr. [Last Name],</p>
+        
+        <p>This email confirms your upcoming shift at [Hospital/Clinic Name]. Please review the details below and confirm your availability by clicking one of the buttons at the bottom of this email.</p>
+        
+        <div class="details">
+            <h3>Shift Details:</h3>
+            <table>
+                <tr>
+                    <th>Date:</th>
+                    <td>[Day], [Month] [Date], [Year]</td>
+                </tr>
+                <tr>
+                    <th>Time:</th>
+                    <td>[Start Time] - [End Time]</td>
+                </tr>
+                <tr>
+                    <th>Department:</th>
+                    <td>[Department Name]</td>
+                </tr>
+                <tr>
+                    <th>Location:</th>
+                    <td>[Building/Wing], [Floor/Room]</td>
+                </tr>
+            </table>
+        </div>
+        
+        <p>If you have any questions or require any accommodations, please contact the scheduling department at [Phone Number] or reply to this email.</p>
+        
+        <p>Please confirm your availability within 48 hours:</p>
+        
+        <div style="text-align: center;">
+            <a href="https://xh1h-uqwm-lutz.n7.xano.io/api:R65C5G2s/webhook/doctors?doctor_id=123&notification_id=456&answer=confirm" class="button">Confirm Shift</a>
+            <a href="https://xh1h-uqwm-lutz.n7.xano.io/api:R65C5G2s/webhook/doctors?doctor_id=123&notification_id=456&answer=decline" class="button" style="background-color: #CC0000;">Unable to Attend</a>
+        </div>
+        
+        <p>Thank you for your dedication to patient care and commitment to our team.</p>
+        
+        <p>Best regards,</p>
+        <p>[Scheduling Coordinator Name]<br>
+        [Title]<br>
+        [Hospital/Clinic Name]<br>
+        [Phone Number]<br>
+        [Email Address]</p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated message. Please do not reply directly unless you need assistance.</p>
+        <p>© Roster App. All rights reserved.</p>
+        <p><small>This email contains confidential information and is intended only for the named recipient. If you have received this email in error, please notify the sender immediately.</small></p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .header {
+            background-color: #00457C;
+            padding: 20px;
+            text-align: center;
+        }
+        .logo {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .content {
+            padding: 20px;
+            background-color: #ffffff;
+        }
+        .footer {
+            background-color: #f8f8f8;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            color: #666666;
+        }
+        .error-box {
+            background-color: #fff3f3;
+            border-left: 4px solid #f44336;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .details {
+            background-color: #f8f8f8;
+            padding: 15px;
+            border-left: 4px solid #00457C;
+            margin: 15px 0;
+        }
+        .button {
+            display: inline-block;
+            background-color: #00457C;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 10px 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .help-options {
+            background-color: #f8f8f8;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">
+            <img src="/api/placeholder/200/50" alt="Hospital Logo" />
+        </div>
+    </div>
+    
+    <div class="content">
+        <p>Dear Dr. [Last Name],</p>
+        
+        <div class="error-box">
+            <h3>⚠️ System Error</h3>
+            <p>We encountered a technical issue while processing your shift confirmation request. Your request has not been completed at this time.</p>
+            <p><strong>Error Reference:</strong> [Error-ID-Number]</p>
+        </div>
+        
+        <div class="details">
+            <h3>Shift Details:</h3>
+            <table>
+                <tr>
+                    <th>Date:</th>
+                    <td>[Day], [Month] [Date], [Year]</td>
+                </tr>
+                <tr>
+                    <th>Time:</th>
+                    <td>[Start Time] - [End Time]</td>
+                </tr>
+                <tr>
+                    <th>Department:</th>
+                    <td>[Department Name]</td>
+                </tr>
+                <tr>
+                    <th>Location:</th>
+                    <td>[Building/Wing], [Floor/Room]</td>
+                </tr>
+            </table>
+        </div>
+        
+        <p>Our technical team has been automatically notified of this issue. In the meantime, please try one of the following options:</p>
+        
+        <div class="help-options">
+            <h4>Available Actions:</h4>
+            <ol>
+                <li>Try confirming your shift again by clicking the button below:
+                    <div style="text-align: center; margin: 10px 0;">
+                        <a href="#" class="button">Retry Confirmation</a>
+                    </div>
+                </li>
+                <li>Confirm your shift by replying directly to this email with "CONFIRM" in the subject line</li>
+                <li>Call the scheduling department at [Phone Number] during business hours ([Hours])</li>
+            </ol>
+        </div>
+        
+        <p>We apologize for any inconvenience this may have caused. Rest assured that your shift remains on the schedule while we resolve this technical issue.</p>
+        
+        <div style="text-align: center; margin: 20px 0;">
+            <a href="#" class="button">Contact Technical Support</a>
+            <a href="#" class="button">View System Status</a>
+        </div>
+        
+        <p>If you continue to experience issues or have any questions, please contact our IT support team at [IT Support Email] or [IT Support Phone Number].</p>
+        
+        <p>Thank you for your patience and understanding.</p>
+        
+        <p>Best regards,</p>
+        <p>[Scheduling Coordinator Name]<br>
+        [Title]<br>
+        [Hospital/Clinic Name]<br>
+        [Phone Number]<br>
+        [Email Address]</p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated message. Please do not reply directly unless you need assistance.</p>
+        <p>© Roster App. All rights reserved.</p>
+        <p><small>This email contains confidential information and is intended only for the named recipient. If you have received this email in error, please notify the sender immediately.</small></p>
+    </div>
+</body>
+</html>
