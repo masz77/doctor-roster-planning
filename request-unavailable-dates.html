@@ -89,31 +89,6 @@
         #period-inputs .date-input textarea {
             width: calc(100% - 18px); /* Account for padding */
         }
-        /* Make date inputs match period inputs styling */
-        #date-inputs .date-input {
-            flex-direction: column;
-            align-items: flex-start;
-            background-color: #f8f8f8;
-            padding: 10px;
-            border-radius: 4px;
-        }
-        #date-inputs .date-input > label {
-            margin-bottom: 8px;
-            font-weight: bold;
-        }
-        #date-inputs .date-input .date-container {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 10px;
-        }
-        #date-inputs .date-input .delete-icon {
-            align-self: flex-end;
-        }
-        #date-inputs .date-input textarea {
-            width: calc(100% - 18px); /* Account for padding */
-        }
         .delete-icon {
             cursor: pointer;
             color: red;
@@ -169,27 +144,6 @@
             textarea.style.height = (textarea.scrollHeight) + 'px';
         }
 
-        function addDateInput() {
-            const container = document.getElementById('date-inputs');
-            const count = container.children.length + 1;
-            const div = document.createElement('div');
-            div.className = 'date-input';
-            div.innerHTML = `
-                <label for="date${count}">Unavailable Date ${count}:</label>
-                <div class="date-container">
-                    <span>Date:</span>
-                    <input type="date" id="date${count}" name="unavailable_date_${count}" required min="${formatDate(selectionStart)}" max="${formatDate(selectionEnd)}">
-                    <button type="button" class="delete-icon" onclick="this.closest('.date-input').remove()">×</button>
-                </div>
-                <textarea name="reason_${count}" placeholder="Optional reason..." oninput="autoResizeTextarea(this)"></textarea>
-            `;
-            container.appendChild(div);
-            
-            // Initialize the new textarea
-            const newTextarea = div.querySelector('textarea');
-            autoResizeTextarea(newTextarea);
-        }
-
         function addPeriodInput() {
             const container = document.getElementById('period-inputs');
             const count = container.children.length + 1;
@@ -230,30 +184,10 @@
                 errors.push("Missing doctor_id in URL.");
             }
 
-            // Process date inputs
-            const dateInputs = document.querySelectorAll('#date-inputs .date-input');
-            const dates = [];
-            const dateSet = new Set();
-
-            dateInputs.forEach((input, index) => {
-                const dateVal = input.querySelector('input').value;
-                const reason = input.querySelector('textarea').value;
-                if (dateVal) {
-                    const dateObj = new Date(dateVal);
-                    if (dateObj < selectionStart || dateObj > selectionEnd) {
-                        errors.push(`Date ${index + 1} is outside the selection period.`);
-                    }
-                    if (dateSet.has(dateVal)) {
-                        errors.push(`Date ${index + 1} is a duplicate.`);
-                    } else {
-                        dateSet.add(dateVal);
-                        dates.push({ date: dateVal, reason });
-                    }
-                }
-            });
-
-            // Process period inputs - process all period inputs now
+            // Process period inputs
             const periodInputs = document.querySelectorAll('#period-inputs .date-input');
+            const dates = [];
+            
             periodInputs.forEach((input, index) => {
                 const from = input.querySelector('input[name^="unavailable_from"]').value;
                 const to = input.querySelector('input[name^="unavailable_to"]').value;
@@ -269,7 +203,7 @@
                         errors.push(`Unavailable Period ${index + 1} is outside the selection period.`);
                     }
                     
-                    // Add period as an entry in the dates array with period object instead of date
+                    // Add period as an entry in the dates array
                     dates.push({
                         period: {
                             from,
@@ -286,16 +220,16 @@
                 return;
             }
 
-            // Check if we have at least one date or period
+            // Check if we have at least one period
             if (dates.length === 0) {
-                displayErrors(["Please add at least one unavailable date or period."]);
+                displayErrors(["Please add at least one unavailable period."]);
                 return;
             }
 
-            // Prepare payload with dates array containing both individual dates and period
+            // Prepare payload with dates array containing periods
             const payload = { 
                 doctor_id: doctorId,
-                dates // Contains both individual dates and period entries
+                dates
             };
 
             // Submit the form data
@@ -312,7 +246,7 @@
                     // Hide the instruction paragraph
                     const paragraphs = document.querySelectorAll('.content p');
                     paragraphs.forEach(p => {
-                        if (p.textContent.includes('Please select all the dates')) {
+                        if (p.textContent.includes('Please select all the periods')) {
                             p.style.display = 'none';
                         }
                     });
@@ -320,7 +254,7 @@
                     // Display the success message with styling
                     const successDiv = document.createElement('div');
                     successDiv.className = 'success-message';
-                    successDiv.innerHTML = "Your unavailable dates have been submitted successfully.";
+                    successDiv.innerHTML = "Your unavailable periods have been submitted successfully.";
                     
                     // Insert success message after the details div
                     const detailsDiv = document.querySelector('.details');
@@ -329,20 +263,18 @@
                     // Hide error messages div
                     document.getElementById('error-messages').style.display = 'none';
                 } else {
-                    displayErrors(["There was an error submitting your unavailable dates."]);
+                    displayErrors(["There was an error submitting your unavailable periods."]);
                 }
             } catch (e) {
-                displayErrors(["There was an error submitting your unavailable dates."]);
+                displayErrors(["There was an error submitting your unavailable periods."]);
             }
         }
 
         window.onload = function () {
             document.getElementById('unavailability-form').addEventListener('submit', submitForm);
-            const firstInput = document.getElementById('date1');
-            if (firstInput) {
-                firstInput.min = formatDate(selectionStart);
-                firstInput.max = formatDate(selectionEnd);
-            }
+            
+            // Add the first period input automatically
+            addPeriodInput();
             
             // Initialize all existing textareas
             document.querySelectorAll('textarea').forEach(textarea => {
@@ -373,39 +305,26 @@
         <!-- Inline error messages will be shown here -->
         <div id="error-messages"></div>
 
-        <p>Please select all the dates you are unavailable and optionally add a reason:</p>
+        <p>Please select all the periods you are unavailable and optionally add a reason:</p>
 
         <form id="unavailability-form">
-            <div id="date-inputs">
-                <div class="date-input">
-                    <label for="date1">Unavailable Date 1:</label>
-                    <div class="date-container">
-                        <span>Date:</span>
-                        <input type="date" id="date1" name="unavailable_date_1" required>
-                        <button type="button" class="delete-icon" onclick="this.closest('.date-input').remove()">×</button>
-                    </div>
-                    <textarea name="reason_1" placeholder="Optional reason..." oninput="autoResizeTextarea(this)"></textarea>
-                </div>
+            <div id="period-inputs">
+                <!-- Period inputs will be added here dynamically -->
             </div>
-            <div class="button-container">
-                <button type="button" class="button add-button" onclick="addDateInput()">Add Another Date</button>
-            </div>
-
-            <div id="period-inputs"></div>
             <div class="button-container">
                 <button type="button" class="button add-button" onclick="addPeriodInput()">Add Unavailable Period</button>
             </div>
 
             <div class="button-container">
-                <button type="submit" class="button">Submit Dates</button>
+                <button type="submit" class="button">Submit Periods</button>
             </div>
         </form>
 
-        <p>If you need to indicate more dates, please reply to this email or contact us directly.</p>
+        <p>If you need to indicate more unavailable periods, please reply to this email or contact us directly.</p>
 
         <p>Thank you for helping us with scheduling!</p>
 
-        <p>Best regards,<br>StatRoster App Team</p>
+        <p>Best regards,<br>Stephen Lee and StatRoster App Team</p>
     </div>
 
     <div class="footer">
